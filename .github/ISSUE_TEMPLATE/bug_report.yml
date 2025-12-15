@@ -1,0 +1,55 @@
+name: Bug 报告
+description: 报告构建/运行/混淆相关的问题
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请尽量提供 **最小复现**（一段小 C/C++ 代码 + 编译命令 + 日志）。
+
+  - type: input
+    id: llvm_tag
+    attributes:
+      label: LLVM Tag
+      description: 你使用的官方 llvm-project tag
+      placeholder: llvmorg-21.1.5
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: 平台
+      placeholder: Windows 11 x64 / Ubuntu 22.04
+    validations:
+      required: true
+
+  - type: textarea
+    id: build_cmd
+    attributes:
+      label: 构建命令
+      description: 贴出 cmake 配置与 build 命令
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤/最小复现
+      description: 最小 C/C++ 样例 + 编译命令（含 -mllvm 参数）+ 复现步骤
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志/报错
+      description: 建议包含完整堆栈/IR 片段/opt 输出等
+      render: text
+    validations:
+      required: false
+

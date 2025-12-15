@@ -1,0 +1,197 @@
+# OLLVM21
+
+# 前言
+项目大致内容与 OLLVM17 区别不大，主要对 LLVM 21 做了兼容性适配与修复。<br>
+感兴趣的可以自行对比 OLLVM17 的修改部分。
+
+# 更新内容
+- 适配 LLVM 21.1.5（PassBuilder 注入点与 API 变更）
+- annotation 功能已修复（感谢 [@Jiang-Night](https://github.com/Jiang-Night)）
+
+# 图例
+<details> 
+<summary>函数源码</summary>
+<img src="resource/fn_source.png"/>
+</details>
+<details> 
+<summary>原版IDA反编译</summary>
+<img src="resource/fn_ida.png"/>
+</details>
+<details> 
+<summary>开启fla</summary>
+<img src="resource/fn_ida_fla.png"/>
+</details>
+<details> 
+<summary>开启fla和bcf</summary>
+<img src="resource/fn_ida_fla_bcf.png"/>
+</details>
+</h7>
+
+# 混淆功能列表
+> 命令行添加位置: 项目->属性->C/C++->Command Line
+```bash
+- bcf # 虚假控制流
+-   bcf_prob # 虚假控制流混淆概率 1~100, 默认70
+-   bcf_loop # 虚假控制流重复次数, 无限制, 默认2
+- fla # 控制流平坦化
+- sub # 指令替换(add/and/sub/or/xor)
+-   sub_loop # 指令替换次数, 无限制, 默认1
+- sobf # 字符串混淆(仅窄字符,只能在命令行中启用,不支持annotation)
+- split # 基本块分割
+-   split_num # 将原基本块分割数量, 无限制, 默认3
+- ibr # 间接分支
+- icall # 间接调用 (call 寄存器)
+- igv # 间接全局变量
+- fncmd # 启用函数名控制混淆功能,annotation已经修好不建议再用这个  ( function_fla_bcf_(); )
+```
+# 功能全开
+> 命令行添加位置: 项目->属性->C/C++->命令行<br>
+> fla和bcf会导致编译速度很慢且部分函数无法使用<br>
+```bash
+-mllvm -fla -mllvm -bcf -mllvm -bcf_prob=80 -mllvm -bcf_loop=3 -mllvm -sobf -mllvm -icall -mllvm -ibr -mllvm -igv -mllvm -sub -mllvm -sub_loop=3 -mllvm -split -mllvm -split_num=5
+```
+> annotate使用说明
+```cpp
+// 可传入上面的混淆开关名使此函数强制开启对应混淆功能
+// 也可以传入no开头加功能命强制关闭对应函数的混淆功能, 例如__attribute__((annotate("nofla nobcf nosplit")))
+int __attribute__((annotate("fla bcf igv ibr icall sub split"))) test_ollvm_aa() {
+    std::printf("123aa\n");
+    return 0;
+}
+```
+# 官方LLVM修补教程
+1.下载LLVM官方源码 [LLVM 21.1.5](https://github.com/llvm/llvm-project/releases/tag/llvmorg-21.1.5) 并解压<br>
+2.下载此项目, 将项目内 `llvm-project/llvm/lib/Passes`、`llvm-project/llvm/test/Transforms/Obfuscation` 覆盖到官方源码对应路径<br>
+
+> 一键打补丁脚本
+```powershell
+# Windows PowerShell
+.\scripts\apply_patch.ps1 -UpstreamRoot D:\path\to\llvm-project
+```
+```bash
+# Linux/macOS bash
+./scripts/apply_patch.sh /path/to/llvm-project
+```
+
+3.使用cmake创建自己需要的编译工具生成文件, 以 VisualStudio 2022 为例
+```bash
+cd llvm-project
+mkdir build_vs2022
+cd build_vs2022
+cmake -G "Visual Studio 17 2022" -DCMAKE_C_FLAGS=/utf-8 -DCMAKE_CXX_FLAGS=/utf-8 -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_EH=OFF -DLLVM_ENABLE_RTTI=OFF -DLLVM_ENABLE_ASSERTIONS=ON -DLLVM_ENABLE_PROJECTS="clang;lld" -A x64 ../llvm
+```
+4.等cmake生成出解决方案后打开build_vs2022目录内的LLVM.sln点击生成解决方案即可<br>
+
+> Ninja 示例（Windows/Linux 均可）
+```bash
+cd llvm-project
+cmake -S llvm -B build_ninja -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS="clang;lld"
+cmake --build build_ninja
+```
+
+> 注意：当前混淆 Pass 默认只在 `ThinOrFullLTOPhase::None`（非 LTO 阶段）注入。
+
+# 测试
+> 推荐在打补丁后的官方 llvm-project 源码目录运行
+```bash
+# 构建完成后
+ninja -C build_ninja check-llvm
+
+# 仅跑本项目新增的回归
+python llvm/utils/lit/lit.py -sv llvm/test/Transforms/Obfuscation
+```
+
+# CI
+本项目自带 GitHub Actions（`.github/workflows/ci.yml`），会在 Ubuntu 上拉取官方 `llvmorg-21.1.5`，覆盖本项目补丁并运行：
+```bash
+ninja -C llvm-upstream/build check-llvm-transforms-obfuscation
+```
+Windows Job 默认禁用：可在手动触发（workflow_dispatch）时设置 `run_windows=true`，或给 PR 添加 label `ci-windows` 启用。
+
+# 参与贡献
+见 `CONTRIBUTING.md`、`SECURITY.md`、`CODE_OF_CONDUCT.md`。
+
+# License
+本仓库包含多种许可证：默认以 `LICENSE`（AGPL-3.0-or-later）授权；第三方代码及其许可证声明见 `THIRD_PARTY_NOTICES.md`，对应许可全文位于 `LICENSES/`。
+
+注意：部分混淆 Pass 源文件头部为 AGPL（v3+）。如果你将补丁应用到官方 `llvm-project` 并分发构建产物（如 `clang`/`opt` 等），请自行评估并遵守 AGPL 的要求。
+
+# 修补细节
+> ...\llvm-project\llvm\lib\Passes\PassBuilder.cpp
+```cpp
+// 引用 Obfuscation 相关文件
+#include "Obfuscation/BogusControlFlow.h" // 虚假控制流
+#include "Obfuscation/Flattening.h"  // 控制流平坦化
+#include "Obfuscation/SplitBasicBlock.h" // 基本块分割
+#include "Obfuscation/Substitution.h" // 指令替换
+#include "Obfuscation/StringEncryption.h" // 字符串加密
+#include "Obfuscation/IndirectGlobalVariable.h" // 间接全局变量
+#include "Obfuscation/IndirectBranch.h" // 间接跳转
+#include "Obfuscation/IndirectCall.h" // 间接调用
+#include "Obfuscation/Utils.h" // 为了控制函数名混淆开关 (bool obf_function_name_cmd;)
+
+// 添加命令行支持
+static cl::opt<bool> s_obf_split("split", cl::init(false), cl::desc("SplitBasicBlock: split_num=3(init)"));
+static cl::opt<bool> s_obf_sobf("sobf", cl::init(false), cl::desc("String Obfuscation"));
+static cl::opt<bool> s_obf_fla("fla", cl::init(false), cl::desc("Flattening"));
+static cl::opt<bool> s_obf_sub("sub", cl::init(false), cl::desc("Substitution: sub_loop"));
+static cl::opt<bool> s_obf_bcf("bcf", cl::init(false), cl::desc("BogusControlFlow: application number -bcf_loop=x must be x > 0"));
+static cl::opt<bool> s_obf_ibr("ibr", cl::init(false), cl::desc("Indirect Branch"));
+static cl::opt<bool> s_obf_igv("igv", cl::init(false), cl::desc("Indirect Global Variable"));
+static cl::opt<bool> s_obf_icall("icall", cl::init(false), cl::desc("Indirect Call"));
+static cl::opt<bool> s_obf_fn_name_cmd("fncmd", cl::init(false), cl::desc("use function name control obfuscation(_ + command + _ | example: function_fla_bcf_)"));
+
+// 在此函数内直接注册 OptimizerLastEPCallback (LLVM 21.1.5 需要第三个参数 Phase)
+PassBuilder::PassBuilder(...) {
+...
+  this->registerOptimizerLastEPCallback(
+      [](llvm::ModulePassManager &MPM,
+         llvm::OptimizationLevel Level,
+         llvm::ThinOrFullLTOPhase Phase) {
+        if (Phase != llvm::ThinOrFullLTOPhase::None) return;
+        outs() << "[obf] run.registerOptimizerLastEPCallback\n";
+        obf_function_name_cmd = s_obf_fn_name_cmd;
+        if (obf_function_name_cmd) {
+          outs() << "[obf] enable function name control obfuscation(_ + command + _ | example: function_fla_)\n";
+        }
+        MPM.addPass(StringEncryptionPass(s_obf_sobf)); // 先进行字符串加密 出现字符串加密基本块以后再进行基本块分割和其他混淆 加大解密难度
+        llvm::FunctionPassManager FPM;
+        FPM.addPass(IndirectCallPass(s_obf_icall)); // 间接调用
+        FPM.addPass(SplitBasicBlockPass(s_obf_split)); // 优先进行基本块分割
+        FPM.addPass(FlatteningPass(s_obf_fla)); // 对于控制流平坦化
+        FPM.addPass(SubstitutionPass(s_obf_sub)); // 指令替换
+        FPM.addPass(BogusControlFlowPass(s_obf_bcf)); // 虚假控制流
+        MPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
+        MPM.addPass(IndirectBranchPass(s_obf_ibr)); // 间接指令 理论上间接指令应该放在最后
+        MPM.addPass(IndirectGlobalVariablePass(s_obf_igv)); // 间接全局变量
+        MPM.addPass(RewriteSymbolPass()); // 根据yaml信息 重命名特定symbols
+      }
+  );
+}
+```
+> ...\llvm-project\llvm\lib\Passes\CMakeLists.txt
+``` bash
+# 添加 Obfuscation 相关源码
+add_llvm_component_library(LLVMPasses
+...
+Obfuscation/Utils.cpp
+Obfuscation/CryptoUtils.cpp
+Obfuscation/ObfuscationOptions.cpp
+Obfuscation/BogusControlFlow.cpp
+Obfuscation/IPObfuscationContext.cpp
+Obfuscation/Flattening.cpp
+Obfuscation/StringEncryption.cpp
+Obfuscation/SplitBasicBlock.cpp
+Obfuscation/Substitution.cpp
+Obfuscation/IndirectBranch.cpp
+Obfuscation/IndirectCall.cpp
+Obfuscation/IndirectGlobalVariable.cpp
+...
+)
+```
+# Credits
+[LLVM](https://github.com/llvm/llvm-project)
+
+[SsagePass](https://github.com/SsageParuders/SsagePass)
+
+[wwh1004-ollvm16](https://github.com/wwh1004/ollvm-16)

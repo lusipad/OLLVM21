@@ -1,0 +1,100 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_windows:
+        description: "Run Windows build/tests (disabled by default)"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout OLLVM21
+        uses: actions/checkout@v4
+
+      - name: Checkout LLVM 21.1.5
+        uses: actions/checkout@v4
+        with:
+          repository: llvm/llvm-project
+          ref: llvmorg-21.1.5
+          path: llvm-upstream
+          fetch-depth: 1
+
+      - name: Apply OLLVM21 patch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash scripts/apply_patch.sh llvm-upstream
+
+      - name: Configure (Ninja)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S llvm-upstream/llvm -B llvm-upstream/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_ENABLE_ASSERTIONS=ON \
+            -DLLVM_TARGETS_TO_BUILD="X86" \
+            -DLLVM_INCLUDE_TESTS=ON \
+            -DLLVM_ENABLE_TERMINFO=OFF
+
+      - name: Build & run Obfuscation lit tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ninja -C llvm-upstream/build check-llvm-transforms-obfuscation
+
+  windows:
+    # Disabled by default. Enable via:
+    # - workflow_dispatch input: run_windows=true
+    # - or add PR label: ci-windows
+    if: >
+      (github.event_name == 'workflow_dispatch' && inputs.run_windows) ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-windows'))
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout OLLVM21
+        uses: actions/checkout@v4
+
+      - name: Checkout LLVM 21.1.5
+        uses: actions/checkout@v4
+        with:
+          repository: llvm/llvm-project
+          ref: llvmorg-21.1.5
+          path: llvm-upstream
+          fetch-depth: 1
+
+      - name: Setup MSVC (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Apply OLLVM21 patch
+        shell: pwsh
+        run: |
+          .\scripts\apply_patch.ps1 -UpstreamRoot "$env:GITHUB_WORKSPACE\llvm-upstream"
+
+      - name: Configure (Ninja)
+        shell: pwsh
+        run: |
+          cmake -S llvm-upstream/llvm -B llvm-upstream/build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DLLVM_ENABLE_ASSERTIONS=ON `
+            -DLLVM_TARGETS_TO_BUILD="X86" `
+            -DLLVM_INCLUDE_TESTS=ON
+
+      - name: Build & run Obfuscation lit tests
+        shell: pwsh
+        run: |
+          ninja -C llvm-upstream/build check-llvm-transforms-obfuscation

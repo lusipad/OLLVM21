@@ -1,0 +1,6 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用/构建问题
+    url: https://github.com
+    about: 如果是环境/构建配置导致的问题，请优先在 Issue 中贴出完整命令与日志。
+
