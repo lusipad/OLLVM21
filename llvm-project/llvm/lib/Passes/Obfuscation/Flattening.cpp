@@ -2,6 +2,7 @@
 #include "CryptoUtils.h"
 #include "Flattening.h"
 #include "SplitBasicBlock.h"
+#include <set>
 //#include "llvm/Transforms/Utils/LowerSwitch.h"
 // namespace
 using namespace llvm;
@@ -69,7 +70,16 @@ bool FlatteningPass::flatten(Function &F) {
     BranchInst *brDispatchBB = BranchInst::Create(dispatchBB, &entryBB);
 
     // 在入口块插入alloca和store指令创建并初始化switch变量，初始值为随机值
-    int randNumCase = rand();
+    std::set<int> usedCases;
+    auto nextCase = [&]() {
+        int val = rand();
+        while (usedCases.count(val)) {
+            val = rand();
+        }
+        usedCases.insert(val);
+        return val;
+    };
+    int randNumCase = nextCase();
     AllocaInst *swVarPtr = new AllocaInst(TYPE_I32, 0, "swVar.ptr", brDispatchBB);
     new StoreInst(CONST_I32(randNumCase), swVarPtr, brDispatchBB);
     // 在分发块插入load指令读取switch变量
@@ -82,7 +92,7 @@ bool FlatteningPass::flatten(Function &F) {
     for(BasicBlock *BB : origBB){
         BB->moveBefore(returnBB);
         swInst->addCase(CONST_I32(randNumCase), BB);
-        randNumCase = rand();
+        randNumCase = nextCase();
     }
 
     // 在每个基本块最后添加修改switch变量的指令和跳转到返回块的指令
@@ -94,9 +104,6 @@ bool FlatteningPass::flatten(Function &F) {
         // 非条件跳转
         else if(BB->getTerminator()->getNumSuccessors() == 1){
             BasicBlock *sucBB = BB->getTerminator()->getSuccessor(0);
-            if (bEntryBB_isConditional) {
-                entryBB.getTerminator()->eraseFromParent();
-            }
             ConstantInt *numCase = swInst->findCaseDest(sucBB);
             new StoreInst(numCase, swVarPtr, BB);
             BranchInst::Create(returnBB, BB);

@@ -600,18 +600,19 @@ bool BogusControlFlowPass::doF(Module &M, Function &F) {
     // fi->setName("");
     Instruction *tbb = fi->getTerminator();
     if (tbb->getOpcode() == Instruction::Br) {
-      BranchInst *br = (BranchInst *)(tbb);
-      if (br->isConditional()) {
-        FCmpInst *cond = (FCmpInst *)br->getCondition();
-        unsigned opcode = cond->getOpcode();
-        if (opcode == Instruction::FCmp) {
-          if (cond->getPredicate() == FCmpInst::FCMP_TRUE) {
-            DEBUG_WITH_TYPE("gen", errs()
-                                       << "bcf: an always true predicate !\n");
-            toDelete.push_back(cond); // The condition
-            toEdit.push_back(tbb);    // The branch using the condition
-          }
-        }
+      BranchInst *br = cast<BranchInst>(tbb);
+      if (!br->isConditional()) {
+        continue;
+      }
+      auto *cond = dyn_cast<FCmpInst>(br->getCondition());
+      if (!cond) {
+        continue;
+      }
+      if (cond->getPredicate() == FCmpInst::FCMP_TRUE) {
+        DEBUG_WITH_TYPE("gen", errs()
+                                   << "bcf: an always true predicate !\n");
+        toDelete.push_back(cond); // The condition
+        toEdit.push_back(tbb);    // The branch using the condition
       }
     }
     /*
